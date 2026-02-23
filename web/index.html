@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Conversor BQ DOCX → XML (Moodle)</title>
+  <style>
+    /* Tema escuro – UnicV (roxo/cinza escuro, verde institucional) */
+    :root {
+      --bg: #0f0f0f;
+      --surface: #1c1d1c;
+      --text: #e8e6e3;
+      --muted: #8b8792;
+      --accent: #418f3a;
+      --accent-hover: #2cc034;
+      --btn-text: #fff;
+      --success: #52b788;
+      --error: #e07a7a;
+      --drop-hover-bg: rgba(45, 106, 79, 0.12);
+      --shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    }
+    /* Tema claro – UnicV */
+    [data-theme="light"] {
+      --bg: #f5f5f0;
+      --surface: #fff;
+      --text: #1a1a1a;
+      --muted: #5c5c5c;
+      --accent: #21a700;
+      --accent-hover: #30b91e;
+      --btn-text: #ebebeb;
+      --success: #397a0d;
+      --error: #b84545;
+      --drop-hover-bg: rgba(30, 126, 52, 0.08);
+      --shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+      transition: background 0.25s ease, color 0.25s ease;
+    }
+    main {
+      background: var(--surface);
+      border-radius: 12px;
+      padding: 2rem;
+      max-width: 480px;
+      width: 100%;
+      box-shadow: var(--shadow);
+      transition: background 0.25s ease, box-shadow 0.25s ease;
+    }
+    h1 {
+      margin: 0 0 0.5rem;
+      font-size: 1.35rem;
+      font-weight: 600;
+    }
+    p.sub {
+      color: var(--muted);
+      font-size: 0.9rem;
+      margin: 0 0 1.5rem;
+    }
+    .drop-zone {
+      border: 2px dashed var(--muted);
+      border-radius: 8px;
+      padding: 1.5rem;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .drop-zone:hover, .drop-zone.dragover {
+      border-color: var(--accent);
+      background: var(--drop-hover-bg);
+    }
+    .drop-zone input { display: none; }
+    .drop-zone .label {
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+    .drop-zone .file-name {
+      margin-top: 0.5rem;
+      font-weight: 500;
+      color: var(--accent);
+    }
+    .btn {
+      width: 100%;
+      margin-top: 1rem;
+      padding: 0.75rem 1rem;
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--btn-text);
+      background: var(--accent);
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.2s, opacity 0.2s, transform 0.05s;
+    }
+    .btn:hover:not(:disabled) { background: var(--accent-hover); }
+    .btn:active { transform: scale(0.98); }
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .msg {
+      margin-top: 1rem;
+      padding: 0.75rem;
+      border-radius: 8px;
+      font-size: 0.9rem;
+    }
+    .msg.success { background: var(--drop-hover-bg); color: var(--success); }
+    .msg.error { background: rgba(224, 122, 122, 0.15); color: var(--error); }
+    .msg.hide { display: none; }
+    .download-wrap {
+      margin-top: 1rem;
+      text-align: center;
+    }
+    .download-wrap a {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 500;
+    }
+    .download-wrap a:hover { text-decoration: underline; }
+    footer {
+      margin-top: 2rem;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+    .theme-toggle {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+    }
+    .theme-toggle span {
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+    .theme-toggle input {
+      position: absolute;
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    .theme-switch {
+      position: relative;
+      display: inline-block;
+      width: 44px;
+      height: 24px;
+      background: var(--muted);
+      border-radius: 24px;
+      cursor: pointer;
+      transition: background 0.25s ease;
+    }
+    .theme-switch::after {
+      content: '';
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 20px;
+      height: 20px;
+      background: var(--surface);
+      border-radius: 50%;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+      transition: transform 0.25s ease;
+    }
+    .theme-toggle input:checked + .theme-switch {
+      background: var(--accent);
+    }
+    .theme-toggle input:checked + .theme-switch::after {
+      transform: translateX(20px);
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="theme-toggle">
+      <span id="themeLabel">Escuro</span>
+      <label>
+        <input type="checkbox" id="themeToggle" aria-label="Alternar tema claro/escuro">
+        <span class="theme-switch"></span>
+      </label>
+    </div>
+    <h1>Conversor BQ DOCX → XML</h1>
+    <p class="sub">Envie um .docx no formato BQ e baixe o XML para importar no Moodle.</p>
+
+    <div class="drop-zone" id="dropZone" title="Clique ou arraste um arquivo .docx">
+      <input type="file" id="fileInput" accept=".docx">
+      <div class="label">Clique ou arraste um arquivo .docx aqui</div>
+      <div class="file-name" id="fileName"></div>
+    </div>
+
+    <button type="button" class="btn" id="btnConvert" disabled>Converter para XML</button>
+
+    <div class="msg hide" id="msg"></div>
+    <div class="download-wrap hide" id="downloadWrap">
+      <a id="downloadLink" href="#" download="banco-questoes.xml">Baixar XML</a>
+    </div>
+  </main>
+  <footer>Formato: marcadores #Questão, #Resposta, #Justificativa, #Final no DOCX.</footer>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="converter.js"></script>
+  <script>
+    const THEME_KEY = 'bq-converter-theme';
+    const root = document.documentElement;
+    const themeToggle = document.getElementById('themeToggle');
+    const themeLabel = document.getElementById('themeLabel');
+
+    function getPreferredTheme() {
+      const saved = localStorage.getItem(THEME_KEY);
+      if (saved === 'light' || saved === 'dark') return saved;
+      if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) return 'light';
+      return 'dark';
+    }
+    function applyTheme(theme) {
+      if (theme === 'light') {
+        root.setAttribute('data-theme', 'light');
+      } else {
+        root.removeAttribute('data-theme');
+      }
+      themeToggle.checked = theme === 'light';
+      themeLabel.textContent = theme === 'light' ? 'Claro' : 'Escuro';
+      localStorage.setItem(THEME_KEY, theme);
+    }
+    applyTheme(getPreferredTheme());
+    themeToggle.addEventListener('change', () => {
+      applyTheme(themeToggle.checked ? 'light' : 'dark');
+    });
+
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const fileName = document.getElementById('fileName');
+    const btnConvert = document.getElementById('btnConvert');
+    const msg = document.getElementById('msg');
+    const downloadWrap = document.getElementById('downloadWrap');
+    const downloadLink = document.getElementById('downloadLink');
+
+    function showMsg(text, type) {
+      msg.textContent = text;
+      msg.className = 'msg ' + (type || '');
+      msg.classList.remove('hide');
+    }
+    function hideMsg() {
+      msg.classList.add('hide');
+    }
+    function setFile(file) {
+      if (!file) {
+        fileName.textContent = '';
+        btnConvert.disabled = true;
+        return;
+      }
+      if (!file.name.toLowerCase().endsWith('.docx')) {
+        showMsg('Selecione um arquivo .docx', 'error');
+        return;
+      }
+      fileName.textContent = file.name;
+      btnConvert.disabled = false;
+      downloadWrap.classList.add('hide');
+      hideMsg();
+    }
+
+    dropZone.addEventListener('click', () => fileInput.click());
+    dropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropZone.classList.add('dragover');
+    });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('dragover');
+      const f = e.dataTransfer.files[0];
+      if (f) setFile(f);
+    });
+    fileInput.addEventListener('change', () => setFile(fileInput.files[0]));
+
+    btnConvert.addEventListener('click', async () => {
+      const file = fileInput.files[0];
+      if (!file) return;
+      btnConvert.disabled = true;
+      hideMsg();
+      downloadWrap.classList.add('hide');
+      try {
+        const xml = await BQConverter.convertDocxToXml(file);
+        const blob = new Blob([xml], { type: 'application/xml; charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const baseName = file.name.replace(/\.docx$/i, '');
+        downloadLink.href = url;
+        downloadLink.download = baseName + '.xml';
+        downloadWrap.classList.remove('hide');
+        showMsg('Conversão concluída. Clique no link para baixar o XML.', 'success');
+      } catch (err) {
+        console.error(err);
+        showMsg('Erro ao converter: ' + (err.message || String(err)), 'error');
+      } finally {
+        btnConvert.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
