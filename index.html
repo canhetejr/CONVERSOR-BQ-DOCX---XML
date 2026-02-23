@@ -176,6 +176,126 @@
     .theme-toggle input:checked + .theme-switch::after {
       transform: translateX(20px);
     }
+    /* Modal de revisão */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.6);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+    .modal-overlay.open {
+      display: flex;
+    }
+    .modal {
+      background: var(--surface);
+      color: var(--text);
+      border-radius: 12px;
+      max-width: 560px;
+      width: 100%;
+      max-height: 90vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: var(--shadow);
+    }
+    .modal-header {
+      padding: 1rem 1.25rem;
+      border-bottom: 1px solid var(--muted);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+    .modal-header h2 {
+      margin: 0;
+      font-size: 1.1rem;
+      font-weight: 600;
+    }
+    .modal-actions-top {
+      display: flex;
+      gap: 0.75rem;
+      padding: 0.5rem 1.25rem;
+      font-size: 0.85rem;
+      color: var(--muted);
+      border-bottom: 1px solid var(--muted);
+    }
+    .modal-actions-top button {
+      background: none;
+      border: none;
+      color: var(--accent);
+      cursor: pointer;
+      padding: 0;
+      text-decoration: underline;
+    }
+    .modal-actions-top button:hover { opacity: 0.9; }
+    .modal-body {
+      overflow-y: auto;
+      padding: 1rem 1.25rem;
+    }
+    .modal-question {
+      border: 1px solid var(--muted);
+      border-radius: 8px;
+      padding: 1rem;
+      margin-bottom: 1rem;
+      background: var(--bg);
+    }
+    .modal-question-header {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+      margin-bottom: 0.75rem;
+    }
+    .modal-question-header input[type="checkbox"] {
+      margin-top: 0.25rem;
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+    .modal-question-num {
+      font-weight: 600;
+      color: var(--accent);
+      font-size: 0.9rem;
+    }
+    .modal-question-text {
+      font-size: 0.95rem;
+      white-space: pre-wrap;
+      margin: 0 0 0.75rem;
+      line-height: 1.4;
+    }
+    .modal-options {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+    .modal-options li {
+      padding: 0.4rem 0.5rem;
+      margin-bottom: 0.25rem;
+      border-radius: 4px;
+      font-size: 0.9rem;
+      border-left: 3px solid transparent;
+    }
+    .modal-options li.correct {
+      border-left-color: var(--success);
+      background: var(--drop-hover-bg);
+      font-weight: 500;
+    }
+    .modal-footer {
+      padding: 1rem 1.25rem;
+      border-top: 1px solid var(--muted);
+      display: flex;
+      gap: 0.75rem;
+      justify-content: flex-end;
+      flex-shrink: 0;
+    }
+    .modal-footer .btn { width: auto; margin-top: 0; }
+    .modal-close {
+      background: transparent;
+      border: 1px solid var(--muted);
+      color: var(--text);
+    }
+    .modal-close:hover { background: var(--muted); opacity: 0.8; }
   </style>
 </head>
 <body>
@@ -199,11 +319,28 @@
     <button type="button" class="btn" id="btnConvert" disabled>Converter para XML</button>
 
     <div class="msg hide" id="msg"></div>
-    <div class="download-wrap hide" id="downloadWrap">
-      <a id="downloadLink" href="#" download="banco-questoes.xml">Baixar XML</a>
-    </div>
   </main>
-  <footer>Formato: marcadores #Questão, #Resposta, #Justificativa, #Final no DOCX.</footer>
+
+  <div class="modal-overlay" id="modalOverlay" aria-hidden="true">
+    <div class="modal" role="dialog" aria-labelledby="modalTitle">
+      <div class="modal-header">
+        <h2 id="modalTitle">Revise as questões antes de exportar</h2>
+      </div>
+      <div class="modal-actions-top">
+        <button type="button" id="btnSelectAll">Selecionar todas</button>
+        <button type="button" id="btnDeselectAll">Desmarcar todas</button>
+      </div>
+      <div class="modal-body" id="modalBody">
+        <!-- questões renderizadas aqui -->
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn modal-close" id="btnModalClose">Fechar</button>
+        <button type="button" class="btn" id="btnExportXml">Exportar XML</button>
+      </div>
+    </div>
+  </div>
+
+  <footer>Feito com Carinho 💚 por Gerencia de Qualidade - UniCV</footer>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <script src="converter.js"></script>
@@ -239,8 +376,15 @@
     const fileName = document.getElementById('fileName');
     const btnConvert = document.getElementById('btnConvert');
     const msg = document.getElementById('msg');
-    const downloadWrap = document.getElementById('downloadWrap');
-    const downloadLink = document.getElementById('downloadLink');
+    const modalOverlay = document.getElementById('modalOverlay');
+    const modalBody = document.getElementById('modalBody');
+    const btnSelectAll = document.getElementById('btnSelectAll');
+    const btnDeselectAll = document.getElementById('btnDeselectAll');
+    const btnModalClose = document.getElementById('btnModalClose');
+    const btnExportXml = document.getElementById('btnExportXml');
+
+    let currentBanco = null;
+    let currentBaseFileName = 'banco-questoes';
 
     function showMsg(text, type) {
       msg.textContent = text;
@@ -262,8 +406,58 @@
       }
       fileName.textContent = file.name;
       btnConvert.disabled = false;
-      downloadWrap.classList.add('hide');
       hideMsg();
+    }
+
+    function openModal() {
+      modalOverlay.classList.add('open');
+      modalOverlay.setAttribute('aria-hidden', 'false');
+    }
+    function closeModal() {
+      modalOverlay.classList.remove('open');
+      modalOverlay.setAttribute('aria-hidden', 'true');
+      currentBanco = null;
+    }
+
+    function renderModalQuestions(banco) {
+      const list = banco.question_list;
+      modalBody.innerHTML = '';
+      list.forEach((q, i) => {
+        const block = document.createElement('div');
+        block.className = 'modal-question';
+        block.dataset.index = i;
+        const options = [];
+        options.push('<li class="correct">' + escapeHtml(q.correct_answer.trim()) + ' <span style="font-size:0.8em;color:var(--success)">(Correta)</span></li>');
+        (q.wrong_answer_list || []).forEach(a => {
+          const t = (a && String(a).trim()) ? escapeHtml(String(a).trim()) : '';
+          if (t) options.push('<li>' + t + '</li>');
+        });
+        block.innerHTML =
+          '<div class="modal-question-header">' +
+            '<input type="checkbox" class="modal-question-check" id="q' + i + '" checked>' +
+            '<label for="q' + i + '" class="modal-question-num">Questão ' + (i + 1) + '</label>' +
+          '</div>' +
+          '<div class="modal-question-text">' + escapeHtml(q.question.trim()) + '</div>' +
+          '<ul class="modal-options">' + options.join('') + '</ul>';
+        modalBody.appendChild(block);
+      });
+    }
+    function escapeHtml(s) {
+      const div = document.createElement('div');
+      div.textContent = s;
+      return div.innerHTML;
+    }
+
+    function setAllChecks(checked) {
+      modalBody.querySelectorAll('.modal-question-check').forEach(cb => { cb.checked = checked; });
+    }
+    function getCheckedQuestions() {
+      const indexes = [];
+      modalBody.querySelectorAll('.modal-question').forEach(block => {
+        const cb = block.querySelector('.modal-question-check');
+        if (cb && cb.checked) indexes.push(parseInt(block.dataset.index, 10));
+      });
+      return indexes.sort((a, b) => a - b);
     }
 
     dropZone.addEventListener('click', () => fileInput.click());
@@ -285,22 +479,45 @@
       if (!file) return;
       btnConvert.disabled = true;
       hideMsg();
-      downloadWrap.classList.add('hide');
       try {
-        const xml = await BQConverter.convertDocxToXml(file);
-        const blob = new Blob([xml], { type: 'application/xml; charset=utf-8' });
-        const url = URL.createObjectURL(blob);
-        const baseName = file.name.replace(/\.docx$/i, '');
-        downloadLink.href = url;
-        downloadLink.download = baseName + '.xml';
-        downloadWrap.classList.remove('hide');
-        showMsg('Conversão concluída. Clique no link para baixar o XML.', 'success');
+        const banco = await BQConverter.convertDocxToBanco(file);
+        currentBanco = banco;
+        currentBaseFileName = file.name.replace(/\.docx$/i, '');
+        renderModalQuestions(banco);
+        openModal();
       } catch (err) {
         console.error(err);
         showMsg('Erro ao converter: ' + (err.message || String(err)), 'error');
       } finally {
         btnConvert.disabled = false;
       }
+    });
+
+    btnSelectAll.addEventListener('click', () => setAllChecks(true));
+    btnDeselectAll.addEventListener('click', () => setAllChecks(false));
+    btnModalClose.addEventListener('click', closeModal);
+    modalOverlay.addEventListener('click', (e) => {
+      if (e.target === modalOverlay) closeModal();
+    });
+
+    btnExportXml.addEventListener('click', () => {
+      if (!currentBanco) return;
+      const indexes = getCheckedQuestions();
+      if (indexes.length === 0) {
+        showMsg('Selecione ao menos uma questão para exportar.', 'error');
+        return;
+      }
+      const filtered = indexes.map(i => currentBanco.question_list[i]);
+      const xml = currentBanco.toXmlString(filtered);
+      const blob = new Blob([xml], { type: 'application/xml; charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = currentBaseFileName + '.xml';
+      a.click();
+      URL.revokeObjectURL(url);
+      closeModal();
+      showMsg('XML exportado com ' + indexes.length + ' questão(ões).', 'success');
     });
   </script>
 </body>

@@ -84,12 +84,17 @@ class BancoDeQuestoes {
     this.question_list = [];
   }
 
-  toXmlString() {
+  /**
+   * Gera XML Moodle. Se questionList for passado, usa apenas essas questões (ex.: aprovadas).
+   * @param {Question[]} [questionList] - Lista opcional de questões; se omitido, usa this.question_list.
+   */
+  toXmlString(questionList) {
+    const list = questionList != null ? questionList : this.question_list;
     const lines = [];
     lines.push('<?xml version="1.0" encoding="UTF-8"?>');
     lines.push('<quiz>');
 
-    this.question_list.forEach((q, n) => {
+    list.forEach((q, n) => {
       const idx = n + 1;
       lines.push('  <question type="multichoice">');
       lines.push('    <name>');
@@ -188,10 +193,25 @@ function textParse(paragraphs) {
  * Fluxo completo: arquivo .docx (File) → XML (string).
  */
 async function convertDocxToXml(file) {
+  const banco = await convertDocxToBanco(file);
+  return banco.toXmlString();
+}
+
+/**
+ * Converte .docx em BancoDeQuestoes (header + question_list) para a UI exibir no modal.
+ */
+async function convertDocxToBanco(file) {
   const arrayBuffer = await file.arrayBuffer();
   const paragraphs = await readDocx(arrayBuffer);
-  const banco = textParse(paragraphs);
-  return banco.toXmlString();
+  return textParse(paragraphs);
+}
+
+/**
+ * Converte texto BQ (uma linha = um parágrafo) em BancoDeQuestoes. Para uso no editor.
+ */
+function parseTextToBanco(text) {
+  const lines = String(text || '').split(/\r?\n/).map((s) => s.trim());
+  return textParse(lines);
 }
 
 // Exportar para uso global no HTML
@@ -201,4 +221,6 @@ window.BQConverter = {
   Question,
   BancoDeQuestoes,
   convertDocxToXml,
+  convertDocxToBanco,
+  parseTextToBanco,
 };
