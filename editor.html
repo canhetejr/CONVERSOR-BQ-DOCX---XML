@@ -275,6 +275,75 @@
       background: var(--drop-hover-bg);
       font-weight: 500;
     }
+    .modal-question-justification {
+      margin-top: 0.75rem;
+      padding-top: 0.5rem;
+      border-top: 1px solid var(--muted);
+      font-size: 0.9rem;
+      color: var(--muted);
+    }
+    .modal-question-header-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-left: auto;
+    }
+    .modal-question-header-actions .btn-edit {
+      padding: 0.35rem 0.6rem;
+      font-size: 0.8rem;
+      background: transparent;
+      border: 1px solid var(--accent);
+      color: var(--accent);
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .modal-question-header-actions .btn-edit:hover { background: var(--drop-hover-bg); }
+    .modal-question-edit {
+      padding-top: 0.5rem;
+    }
+    .modal-question-edit label {
+      display: block;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--muted);
+      margin: 0.75rem 0 0.25rem;
+    }
+    .modal-question-edit label:first-of-type { margin-top: 0; }
+    .modal-question-edit textarea {
+      width: 100%;
+      min-height: 60px;
+      padding: 0.5rem;
+      font-size: 0.9rem;
+      font-family: inherit;
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--muted);
+      border-radius: 6px;
+      resize: vertical;
+    }
+    .modal-question-edit textarea:focus { outline: none; border-color: var(--accent); }
+    .modal-question-edit .wrong-item {
+      display: flex;
+      gap: 0.25rem;
+      margin-bottom: 0.25rem;
+    }
+    .modal-question-edit .wrong-item textarea { flex: 1; min-height: 40px; }
+    .modal-question-edit .btn-small {
+      padding: 0.25rem 0.5rem;
+      font-size: 0.75rem;
+      background: var(--surface);
+      border: 1px solid var(--muted);
+      color: var(--text);
+      border-radius: 4px;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .modal-question-edit .btn-small:hover { border-color: var(--accent); color: var(--accent); }
+    .modal-question-edit .edit-actions {
+      margin-top: 1rem;
+      display: flex;
+      gap: 0.5rem;
+    }
     .modal-footer {
       padding: 1rem 1.25rem; border-top: 1px solid var(--muted);
       display: flex; gap: 0.75rem; justify-content: flex-end; flex-shrink: 0;
@@ -428,10 +497,18 @@
         var tag = btn.getAttribute('data-insert');
         var start = editorTextarea.selectionStart;
         var end = editorTextarea.selectionEnd;
-        var text = (start === end ? tag + '\n' : tag);
-        editorTextarea.value = editorTextarea.value.slice(0, start) + text + editorTextarea.value.slice(end);
+        var inserted;
+        if (start === end) {
+          inserted = tag + '\n';
+          editorTextarea.value = editorTextarea.value.slice(0, start) + inserted + editorTextarea.value.slice(end);
+          editorTextarea.selectionStart = editorTextarea.selectionEnd = start + inserted.length;
+        } else {
+          inserted = '\n' + tag + '\n';
+          editorTextarea.value = editorTextarea.value.slice(0, start) + inserted + editorTextarea.value.slice(start, end) + editorTextarea.value.slice(end);
+          editorTextarea.selectionStart = start + inserted.length;
+          editorTextarea.selectionEnd = end + inserted.length;
+        }
         editorTextarea.focus();
-        editorTextarea.selectionStart = editorTextarea.selectionEnd = start + text.length;
         updateLineNumbers();
       });
     });
@@ -513,15 +590,84 @@
           var t = (a != null && String(a).trim()) ? escapeHtml(String(a).trim()) : '';
           if (t) options.push('<li>' + t + '</li>');
         });
+        var justificationText = (q.justification != null ? String(q.justification) : '').trim();
+        var justificationHtml = justificationText ? '<div class="modal-question-justification"><strong>Justificativa:</strong> ' + escapeHtml(justificationText) + '</div>' : '';
         block.innerHTML =
           '<div class="modal-question-header">' +
             '<input type="checkbox" class="modal-question-check" id="q' + i + '" checked>' +
             '<label for="q' + i + '" class="modal-question-num">Questão ' + (i + 1) + '</label>' +
+            '<div class="modal-question-header-actions"><button type="button" class="btn-edit" data-edit-index="' + i + '">Editar</button></div>' +
           '</div>' +
-          '<div class="modal-question-text">' + escapeHtml(questionText) + '</div>' +
-          '<ul class="modal-options">' + options.join('') + '</ul>';
+          '<div class="modal-question-content">' +
+            '<div class="modal-question-text">' + escapeHtml(questionText) + '</div>' +
+            '<ul class="modal-options">' + options.join('') + '</ul>' +
+            justificationHtml +
+          '</div>';
         modalBody.appendChild(block);
       });
+      modalBody.querySelectorAll('.btn-edit').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var idx = parseInt(btn.getAttribute('data-edit-index'), 10);
+          if (Number.isNaN(idx) || !currentBanco || !currentBanco.question_list[idx]) return;
+          openEditForm(modalBody.querySelector('.modal-question[data-index="' + idx + '"]'), idx);
+        });
+      });
+    }
+
+    function openEditForm(block, index) {
+      var q = currentBanco.question_list[index];
+      var wrongList = q.wrong_answer_list || [];
+      var wrongsHtml = wrongList.map(function (a, j) {
+        return '<div class="wrong-item">' +
+          '<textarea class="edit-wrong" data-wrong-index="' + j + '" rows="2">' + escapeHtml(String(a || '').trim()) + '</textarea>' +
+          '<button type="button" class="btn-small btn-remove-wrong" title="Remover">−</button>' +
+        '</div>';
+      }).join('');
+      var editHtml =
+        '<div class="modal-question-edit">' +
+          '<label>Enunciado</label>' +
+          '<textarea class="edit-question" rows="4">' + escapeHtml((q.question != null ? String(q.question) : '').trim()) + '</textarea>' +
+          '<label>Resposta correta</label>' +
+          '<textarea class="edit-correct" rows="2">' + escapeHtml((q.correct_answer != null ? String(q.correct_answer) : '').trim()) + '</textarea>' +
+          '<label>Alternativas erradas</label>' +
+          '<div class="wrong-list">' + wrongsHtml + '</div>' +
+          '<button type="button" class="btn-small" id="btnAddWrong">+ Adicionar alternativa</button>' +
+          '<label>Justificativa</label>' +
+          '<textarea class="edit-justification" rows="3">' + escapeHtml((q.justification != null ? String(q.justification) : '').trim()) + '</textarea>' +
+          '<div class="edit-actions">' +
+            '<button type="button" class="btn modal-close btn-cancel-edit">Cancelar</button>' +
+            '<button type="button" class="btn btn-save-edit">Salvar</button>' +
+          '</div>' +
+        '</div>';
+      var content = block.querySelector('.modal-question-content');
+      if (content) {
+        content.innerHTML = editHtml;
+        var wrongListEl = content.querySelector('.wrong-list');
+        content.querySelector('#btnAddWrong').addEventListener('click', function () {
+          var div = document.createElement('div');
+          div.className = 'wrong-item';
+          div.innerHTML = '<textarea class="edit-wrong" rows="2" placeholder="Nova alternativa"></textarea><button type="button" class="btn-small btn-remove-wrong" title="Remover">−</button>';
+          wrongListEl.appendChild(div);
+          div.querySelector('.btn-remove-wrong').addEventListener('click', function () { div.remove(); });
+        });
+        content.querySelectorAll('.btn-remove-wrong').forEach(function (btn) {
+          btn.addEventListener('click', function () { btn.closest('.wrong-item').remove(); });
+        });
+        content.querySelector('.btn-cancel-edit').addEventListener('click', function () {
+          renderModalQuestions(currentBanco);
+        });
+        content.querySelector('.btn-save-edit').addEventListener('click', function () {
+          var question = content.querySelector('.edit-question').value.trim();
+          var correct = content.querySelector('.edit-correct').value.trim();
+          var wrongs = Array.from(content.querySelectorAll('.edit-wrong')).map(function (ta) { return ta.value.trim(); }).filter(Boolean);
+          var justification = content.querySelector('.edit-justification').value.trim();
+          q.question = question;
+          q.correct_answer = correct;
+          q.wrong_answer_list = wrongs;
+          q.justification = justification;
+          renderModalQuestions(currentBanco);
+        });
+      }
     }
     function setAllChecks(checked) {
       modalBody.querySelectorAll('.modal-question-check').forEach(function (cb) { cb.checked = checked; });

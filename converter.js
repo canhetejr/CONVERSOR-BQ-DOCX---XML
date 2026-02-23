@@ -9,6 +9,7 @@ const WORD_NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 /**
  * Extrai os parágrafos de um arquivo .docx (ArrayBuffer).
  * O .docx é um ZIP contendo word/document.xml.
+ * Cada w:p vira um item no array (ordem do documento); texto de vários w:t no mesmo parágrafo é concatenado.
  */
 async function readDocx(arrayBuffer) {
   const zip = await JSZip.loadAsync(arrayBuffer);
@@ -32,6 +33,28 @@ async function readDocx(arrayBuffer) {
   return paragraphs;
 }
 
+/** Verifica se a linha é o marcador de justificativa (#Justificativa ou Justificativa). */
+function isJustificativaMarker(line) {
+  if (line == null) return false;
+  const s = String(line).trim();
+  return s === '#Justificativa' || s === 'Justificativa' || s === '#Justificativa:' || s === 'Justificativa:';
+}
+
+/** Encontra o início de "Justificativa" na linha (com ou sem #) para separar texto antes/depois. */
+function splitJustificativaLine(line) {
+  if (line == null) return null;
+  const s = String(line);
+  const lower = s.toLowerCase();
+  const idxHash = lower.indexOf('#justificativa');
+  const idxPlain = lower.indexOf('justificativa');
+  const idx = idxHash >= 0 ? idxHash : idxPlain >= 0 ? idxPlain : -1;
+  if (idx < 0) return null;
+  const rest = s.slice(idx);
+  const markerMatch = rest.match(/^#?justificativa:?\s*/i);
+  const len = markerMatch ? markerMatch[0].length : (rest[0] === '#' ? 14 : 12);
+  return { before: s.slice(0, idx).trim(), after: s.slice(idx + len).trim() };
+}
+
 /**
  * Representa uma questão (enunciado, resposta correta, erradas, justificativa).
  */
@@ -42,36 +65,60 @@ class Question {
     this.wrong_answer_list = [];
     this.justification = '';
 
+    // Enunciado: até a primeira linha que seja #Resposta
     let t = textLines.shift();
-    while (t !== undefined && t !== '#Resposta') {
-      this.question += t + '\n';
+    while (t !== undefined && String(t).trim() !== '#Resposta') {
+      this.question += (t != null ? String(t) : '') + '\n';
       t = textLines.shift();
     }
 
+    // Resposta correta: até a próxima linha #Resposta
     t = textLines.shift();
-    while (t !== undefined && t !== '#Resposta') {
-      this.correct_answer += t + '\n';
+    while (t !== undefined && String(t).trim() !== '#Resposta') {
+      this.correct_answer += (t != null ? String(t) : '') + '\n';
       t = textLines.shift();
     }
+    this.question = this.question.trim();
+    this.correct_answer = this.correct_answer.trim();
 
     let buffer = '';
     while (textLines.length) {
       t = textLines.shift();
-      if (t === '#Resposta') {
-        this.wrong_answer_list.push(buffer.trim());
+      const tStr = t != null ? String(t) : '';
+      const tTrimmed = tStr.trim();
+      if (tTrimmed === '#Resposta') {
+        const trimmed = buffer.trim();
+        if (trimmed !== '') this.wrong_answer_list.push(trimmed);
         buffer = '';
-      } else if (t === '#Justificativa') {
-        this.wrong_answer_list.push(buffer.trim());
+      } else if (isJustificativaMarker(t)) {
+        const trimmed = buffer.trim();
+        if (trimmed !== '') this.wrong_answer_list.push(trimmed);
         break;
       } else {
-        buffer += t + '\n';
+        const split = splitJustificativaLine(t);
+        if (split) {
+          if (split.before) buffer += split.before + '\n';
+          const trimmed = buffer.trim();
+          if (trimmed !== '') this.wrong_answer_list.push(trimmed);
+          if (split.after) textLines.unshift(split.after);
+          break;
+        }
+        buffer += tStr + '\n';
       }
     }
 
+    // Garantir 5 alternativas no total (1 correta + 4 erradas)
+    while (this.wrong_answer_list.length < 4) {
+      this.wrong_answer_list.push('');
+    }
+
+    // Tudo que sobrou é justificativa (linhas após #Justificativa)
     while (textLines.length) {
       t = textLines.shift();
-      this.justification += (this.justification ? '\n' : '') + t;
+      const line = t != null ? String(t) : '';
+      this.justification += (this.justification ? '\n' : '') + line;
     }
+    this.justification = this.justification.trim();
   }
 }
 
@@ -104,7 +151,7 @@ class BancoDeQuestoes {
       lines.push(`      <text><![CDATA[${escapeCdata(q.question)}]]></text>`);
       lines.push('    </questiontext>');
       lines.push('    <generalfeedback format="moodle_auto_format">');
-      lines.push('      <text><![CDATA[]]></text>');
+      lines.push(`      <text><![CDATA[${escapeCdata(q.justification || '')}]]></text>`);
       lines.push('    </generalfeedback>');
       lines.push('    <defaultgrade>1.0000000</defaultgrade>');
       lines.push('    <penalty>0.3333333</penalty>');
@@ -126,12 +173,16 @@ class BancoDeQuestoes {
       lines.push('    <answer fraction="100" format="moodle_auto_format">');
       lines.push(`      <text><![CDATA[${escapeCdata(q.correct_answer)}]]></text>`);
       lines.push('      <feedback format="moodle_auto_format">');
-      lines.push('        <text><![CDATA[]]></text>');
+      lines.push(`        <text><![CDATA[${escapeCdata(q.justification || '')}]]></text>`);
       lines.push('      </feedback>');
       lines.push('    </answer>');
-      q.wrong_answer_list.forEach((a) => {
+      // Sempre 4 alternativas erradas (total 5 com a correta)
+      const wrongList = (q.wrong_answer_list || []).slice(0, 4);
+      while (wrongList.length < 4) wrongList.push('');
+      wrongList.forEach((a) => {
+        const text = a != null ? String(a).trim() : '';
         lines.push('    <answer fraction="0" format="moodle_auto_format">');
-        lines.push(`      <text><![CDATA[${escapeCdata(a)}]]></text>`);
+        lines.push(`      <text><![CDATA[${escapeCdata(text)}]]></text>`);
         lines.push('      <feedback format="moodle_auto_format">');
         lines.push('        <text><![CDATA[]]></text>');
         lines.push('      </feedback>');
@@ -162,17 +213,18 @@ function textParse(paragraphs) {
   const doc = [...paragraphs];
   let header = '';
   let paragraph = doc.shift();
-  while (paragraph !== undefined && paragraph !== '#Questão') {
-    header += (header ? '\n' : '') + paragraph;
+  const isTag = (p, tag) => p != null && String(p).trim() === tag;
+  while (paragraph !== undefined && !isTag(paragraph, '#Questão')) {
+    header += (header ? '\n' : '') + (paragraph != null ? String(paragraph) : '');
     paragraph = doc.shift();
   }
 
-  const responseBQ = new BancoDeQuestoes(header);
+  const responseBQ = new BancoDeQuestoes(header.trim());
   let buffer = [];
 
   while (doc.length) {
     paragraph = doc.shift();
-    if (paragraph !== '#Questão' && paragraph !== '#Final') {
+    if (!isTag(paragraph, '#Questão') && !isTag(paragraph, '#Final')) {
       buffer.push(paragraph);
     } else {
       if (buffer.length) {
@@ -215,12 +267,11 @@ function parseTextToBanco(text) {
 }
 
 // Exportar para uso global no HTML
-window.BQConverter = {
-  readDocx,
-  textParse,
-  Question,
-  BancoDeQuestoes,
-  convertDocxToXml,
-  convertDocxToBanco,
-  parseTextToBanco,
-};
+window.BQConverter = window.BQConverter || {};
+window.BQConverter.readDocx = readDocx;
+window.BQConverter.textParse = textParse;
+window.BQConverter.Question = Question;
+window.BQConverter.BancoDeQuestoes = BancoDeQuestoes;
+window.BQConverter.convertDocxToXml = convertDocxToXml;
+window.BQConverter.convertDocxToBanco = convertDocxToBanco;
+window.BQConverter.parseTextToBanco = parseTextToBanco;
