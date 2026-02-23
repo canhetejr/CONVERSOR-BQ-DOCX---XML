@@ -505,8 +505,9 @@
         } else {
           inserted = '\n' + tag + '\n';
           editorTextarea.value = editorTextarea.value.slice(0, start) + inserted + editorTextarea.value.slice(start, end) + editorTextarea.value.slice(end);
+          var selectionLength = end - start;
           editorTextarea.selectionStart = start + inserted.length;
-          editorTextarea.selectionEnd = end + inserted.length;
+          editorTextarea.selectionEnd = start + inserted.length + selectionLength;
         }
         editorTextarea.focus();
         updateLineNumbers();

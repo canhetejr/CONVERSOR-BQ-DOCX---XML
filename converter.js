@@ -51,7 +51,8 @@ function splitJustificativaLine(line) {
   if (idx < 0) return null;
   const rest = s.slice(idx);
   const markerMatch = rest.match(/^#?justificativa:?\s*/i);
-  const len = markerMatch ? markerMatch[0].length : (rest[0] === '#' ? 14 : 12);
+  // Fallback: "#justificativa" = 13 chars, "justificativa" = 12 chars (sem #)
+  const len = markerMatch ? markerMatch[0].length : (rest[0] === '#' ? 13 : 12);
   return { before: s.slice(0, idx).trim(), after: s.slice(idx + len).trim() };
 }
 
