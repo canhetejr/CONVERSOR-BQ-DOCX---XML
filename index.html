@@ -420,16 +420,18 @@
     }
 
     function renderModalQuestions(banco) {
-      const list = banco.question_list;
+      const list = banco.question_list || [];
       modalBody.innerHTML = '';
       list.forEach((q, i) => {
         const block = document.createElement('div');
         block.className = 'modal-question';
-        block.dataset.index = i;
+        block.dataset.index = String(i);
+        const questionText = (q.question != null ? String(q.question) : '').trim();
+        const correctText = (q.correct_answer != null ? String(q.correct_answer) : '').trim();
         const options = [];
-        options.push('<li class="correct">' + escapeHtml(q.correct_answer.trim()) + ' <span style="font-size:0.8em;color:var(--success)">(Correta)</span></li>');
+        options.push('<li class="correct">' + escapeHtml(correctText) + ' <span style="font-size:0.8em;color:var(--success)">(Correta)</span></li>');
         (q.wrong_answer_list || []).forEach(a => {
-          const t = (a && String(a).trim()) ? escapeHtml(String(a).trim()) : '';
+          const t = (a != null && String(a).trim()) ? escapeHtml(String(a).trim()) : '';
           if (t) options.push('<li>' + t + '</li>');
         });
         block.innerHTML =
@@ -437,14 +439,14 @@
             '<input type="checkbox" class="modal-question-check" id="q' + i + '" checked>' +
             '<label for="q' + i + '" class="modal-question-num">Questão ' + (i + 1) + '</label>' +
           '</div>' +
-          '<div class="modal-question-text">' + escapeHtml(q.question.trim()) + '</div>' +
+          '<div class="modal-question-text">' + escapeHtml(questionText) + '</div>' +
           '<ul class="modal-options">' + options.join('') + '</ul>';
         modalBody.appendChild(block);
       });
     }
     function escapeHtml(s) {
       const div = document.createElement('div');
-      div.textContent = s;
+      div.textContent = s == null ? '' : String(s);
       return div.innerHTML;
     }
 
@@ -455,7 +457,8 @@
       const indexes = [];
       modalBody.querySelectorAll('.modal-question').forEach(block => {
         const cb = block.querySelector('.modal-question-check');
-        if (cb && cb.checked) indexes.push(parseInt(block.dataset.index, 10));
+        const idx = parseInt(block.dataset.index, 10);
+        if (cb && cb.checked && !Number.isNaN(idx)) indexes.push(idx);
       });
       return indexes.sort((a, b) => a - b);
     }
@@ -501,21 +504,21 @@
     });
 
     btnExportXml.addEventListener('click', () => {
-      if (!currentBanco) return;
+      if (!currentBanco || !currentBanco.question_list) return;
       const indexes = getCheckedQuestions();
       if (indexes.length === 0) {
         showMsg('Selecione ao menos uma questão para exportar.', 'error');
         return;
       }
-      const filtered = indexes.map(i => currentBanco.question_list[i]);
+      const filtered = indexes.map(i => currentBanco.question_list[i]).filter(Boolean);
       const xml = currentBanco.toXmlString(filtered);
       const blob = new Blob([xml], { type: 'application/xml; charset=utf-8' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = currentBaseFileName + '.xml';
+      a.download = (currentBaseFileName || 'banco-questoes') + '.xml';
       a.click();
-      URL.revokeObjectURL(url);
+      setTimeout(() => URL.revokeObjectURL(url), 200);
       closeModal();
       showMsg('XML exportado com ' + indexes.length + ' questão(ões).', 'success');
     });

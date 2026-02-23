@@ -144,17 +144,39 @@
 
     .editor-container {
       flex: 1;
-      min-height: 420px;
+      display: flex;
+      min-height: 400px;
       border: 1px solid var(--muted);
       border-radius: 8px;
       overflow: hidden;
       background: var(--surface);
       box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);
     }
-    .editor-container .tox-tinymce {
-      border: none !important;
-      border-radius: 8px;
+    .editor-lines {
+      padding: 1rem 0.5rem 1rem 1rem;
+      min-width: 2.5rem;
+      text-align: right;
+      font-family: Consolas, Monaco, monospace;
+      font-size: 0.9rem;
+      line-height: 1.5;
+      color: var(--muted);
+      user-select: none;
+      overflow: hidden;
     }
+    .editor-textarea {
+      flex: 1;
+      min-width: 0;
+      padding: 1rem;
+      font-family: Consolas, Monaco, monospace;
+      font-size: 0.95rem;
+      line-height: 1.5;
+      background: var(--bg);
+      color: var(--text);
+      border: none;
+      resize: none;
+      outline: none;
+    }
+    .editor-textarea::placeholder { color: var(--muted); }
 
     .editor-actions {
       display: flex;
@@ -291,7 +313,8 @@
     </div>
 
     <div class="editor-container">
-      <textarea id="editorBQ" placeholder="Carregando editor…"></textarea>
+      <div class="editor-lines" id="editorLines">1</div>
+      <textarea class="editor-textarea" id="editorTextarea" placeholder="Cole ou digite o conteúdo BQ. Cada linha = um parágrafo. Use #Questão, #Resposta, #Justificativa e #Final." spellcheck="false"></textarea>
     </div>
 
     <div class="editor-actions">
@@ -319,15 +342,15 @@
     </div>
   </div>
 
-  <script src="https://cdn.tiny.cloud/1/no-api-key/tinymce/6/tinymce.min.js" referrerpolicy="origin"></script>
   <script src="converter.js"></script>
   <script>
     const THEME_KEY = 'bq-converter-theme';
     const DRAFT_KEY = 'bq-editor-draft';
-    const EDITOR_ID = 'editorBQ';
     const root = document.documentElement;
     const themeToggle = document.getElementById('themeToggle');
     const themeLabel = document.getElementById('themeLabel');
+    const editorTextarea = document.getElementById('editorTextarea');
+    const editorLines = document.getElementById('editorLines');
     const msg = document.getElementById('msg');
     const modalOverlay = document.getElementById('modalOverlay');
     const modalBody = document.getElementById('modalBody');
@@ -344,19 +367,6 @@
       themeToggle.checked = theme === 'light';
       themeLabel.textContent = theme === 'light' ? 'Claro' : 'Escuro';
       localStorage.setItem(THEME_KEY, theme);
-      updateEditorTheme(theme);
-    }
-    function updateEditorTheme(theme) {
-      const ed = window.tinymce && tinymce.get(EDITOR_ID);
-      if (!ed || !ed.getBody()) return;
-      const body = ed.getBody();
-      if (theme === 'light') {
-        body.style.backgroundColor = '#f5f5f0';
-        body.style.color = '#1a1a1a';
-      } else {
-        body.style.backgroundColor = '#1c1d1c';
-        body.style.color = '#e8e6e3';
-      }
     }
 
     function showMsg(text, type) {
@@ -366,36 +376,23 @@
     }
     function hideMsg() { msg.classList.add('hide'); }
 
-    /** Extrai uma linha por bloco (p/div), preservando as tags #Questão etc. por baixo dos panos. */
-    function getEditorLines() {
-      const ed = tinymce.get(EDITOR_ID);
-      if (!ed) return [];
-      const body = ed.getBody();
-      if (!body || !body.children) return [];
-      const lines = [];
-      for (let i = 0; i < body.children.length; i++) {
-        const el = body.children[i];
-        const text = (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
-        lines.push(text);
+    function updateLineNumbers() {
+      const text = editorTextarea.value;
+      const n = text ? text.split(/\r?\n/).length : 1;
+      editorLines.textContent = Array.from({ length: n }, function (_, i) { return i + 1; }).join('\n');
+    }
+    editorTextarea.addEventListener('input', updateLineNumbers);
+    editorTextarea.addEventListener('scroll', function () { editorLines.scrollTop = editorTextarea.scrollTop; });
+    editorTextarea.addEventListener('keydown', function (e) {
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        const start = editorTextarea.selectionStart;
+        const end = editorTextarea.selectionEnd;
+        editorTextarea.value = editorTextarea.value.slice(0, start) + '\t' + editorTextarea.value.slice(end);
+        editorTextarea.selectionStart = editorTextarea.selectionEnd = start + 1;
+        updateLineNumbers();
       }
-      return lines;
-    }
-
-    function escapeHtml(s) {
-      const div = document.createElement('div');
-      div.textContent = s == null ? '' : String(s);
-      return div.innerHTML;
-    }
-
-    /** Define o conteúdo do editor a partir de linhas (cada linha = um parágrafo). Tags preservadas. */
-    function setEditorContentFromLines(lines) {
-      const ed = tinymce.get(EDITOR_ID);
-      if (!ed) return;
-      const html = (lines || []).map(function (line) {
-        return '<p>' + escapeHtml(line) + '</p>';
-      }).join('');
-      ed.setContent(html || '<p></p>');
-    }
+    });
 
     const BQ_TEMPLATE = [
       'Título ou cabeçalho do banco (opcional)',
@@ -424,10 +421,68 @@
       'Justificativa.',
       '',
       '#Final'
-    ];
+    ].join('\n');
 
-    let currentBanco = null;
-    let currentBaseFileName = 'banco-editor';
+    document.querySelectorAll('.btn-insert[data-insert]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var tag = btn.getAttribute('data-insert');
+        var start = editorTextarea.selectionStart;
+        var end = editorTextarea.selectionEnd;
+        var text = (start === end ? tag + '\n' : tag);
+        editorTextarea.value = editorTextarea.value.slice(0, start) + text + editorTextarea.value.slice(end);
+        editorTextarea.focus();
+        editorTextarea.selectionStart = editorTextarea.selectionEnd = start + text.length;
+        updateLineNumbers();
+      });
+    });
+    document.getElementById('btnInsertTemplate').addEventListener('click', function () {
+      editorTextarea.value = BQ_TEMPLATE;
+      updateLineNumbers();
+      showMsg('Modelo inserido. Edite conforme necessário.', 'success');
+    });
+
+    document.getElementById('fileLoadTxt').addEventListener('change', function (e) {
+      var f = e.target.files[0];
+      if (!f) return;
+      var r = new FileReader();
+      r.onload = function () {
+        editorTextarea.value = r.result;
+        updateLineNumbers();
+        showMsg('Arquivo carregado.', 'success');
+      };
+      r.readAsText(f, 'UTF-8');
+      e.target.value = '';
+    });
+    document.getElementById('btnSaveDraft').addEventListener('click', function () {
+      try {
+        localStorage.setItem(DRAFT_KEY, editorTextarea.value);
+        showMsg('Rascunho salvo.', 'success');
+      } catch (err) {
+        showMsg('Erro ao salvar rascunho.', 'error');
+      }
+    });
+    document.getElementById('btnClear').addEventListener('click', function () {
+      editorTextarea.value = '';
+      updateLineNumbers();
+      hideMsg();
+      showMsg('Editor limpo.', 'success');
+    });
+
+    document.getElementById('btnExportTxt').addEventListener('click', function () {
+      var text = editorTextarea.value;
+      if (!text.trim()) { showMsg('Não há conteúdo para exportar.', 'error'); return; }
+      var blob = new Blob([text], { type: 'text/plain; charset=utf-8' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = 'banco-bq.txt';
+      a.click();
+      setTimeout(function () { URL.revokeObjectURL(url); }, 200);
+      showMsg('Arquivo .txt exportado.', 'success');
+    });
+
+    var currentBanco = null;
+    var currentBaseFileName = 'banco-editor';
 
     function openModal() {
       modalOverlay.classList.add('open');
@@ -438,22 +493,24 @@
       modalOverlay.setAttribute('aria-hidden', 'true');
       currentBanco = null;
     }
-    function escapeHtmlModal(s) {
-      const div = document.createElement('div');
-      div.textContent = s;
+    function escapeHtml(s) {
+      var div = document.createElement('div');
+      div.textContent = s == null ? '' : String(s);
       return div.innerHTML;
     }
     function renderModalQuestions(banco) {
-      const list = banco.question_list;
+      var list = banco.question_list || [];
       modalBody.innerHTML = '';
       list.forEach(function (q, i) {
-        const block = document.createElement('div');
+        var block = document.createElement('div');
         block.className = 'modal-question';
-        block.dataset.index = i;
-        const options = [];
-        options.push('<li class="correct">' + escapeHtmlModal(q.correct_answer.trim()) + ' <span style="font-size:0.8em;color:var(--success)">(Correta)</span></li>');
+        block.dataset.index = String(i);
+        var questionText = (q.question != null ? String(q.question) : '').trim();
+        var correctText = (q.correct_answer != null ? String(q.correct_answer) : '').trim();
+        var options = [];
+        options.push('<li class="correct">' + escapeHtml(correctText) + ' <span style="font-size:0.8em;color:var(--success)">(Correta)</span></li>');
         (q.wrong_answer_list || []).forEach(function (a) {
-          const t = (a && String(a).trim()) ? escapeHtmlModal(String(a).trim()) : '';
+          var t = (a != null && String(a).trim()) ? escapeHtml(String(a).trim()) : '';
           if (t) options.push('<li>' + t + '</li>');
         });
         block.innerHTML =
@@ -461,25 +518,20 @@
             '<input type="checkbox" class="modal-question-check" id="q' + i + '" checked>' +
             '<label for="q' + i + '" class="modal-question-num">Questão ' + (i + 1) + '</label>' +
           '</div>' +
-          '<div class="modal-question-text">' + escapeHtmlModal(q.question.trim()) + '</div>' +
+          '<div class="modal-question-text">' + escapeHtml(questionText) + '</div>' +
           '<ul class="modal-options">' + options.join('') + '</ul>';
         modalBody.appendChild(block);
       });
-    }
-    function openReviewModal(banco, baseFileName) {
-      currentBanco = banco;
-      currentBaseFileName = baseFileName || 'banco-editor';
-      renderModalQuestions(banco);
-      openModal();
     }
     function setAllChecks(checked) {
       modalBody.querySelectorAll('.modal-question-check').forEach(function (cb) { cb.checked = checked; });
     }
     function getCheckedQuestions() {
-      const indexes = [];
+      var indexes = [];
       modalBody.querySelectorAll('.modal-question').forEach(function (block) {
-        const cb = block.querySelector('.modal-question-check');
-        if (cb && cb.checked) indexes.push(parseInt(block.dataset.index, 10));
+        var cb = block.querySelector('.modal-question-check');
+        var idx = parseInt(block.dataset.index, 10);
+        if (cb && cb.checked && !Number.isNaN(idx)) indexes.push(idx);
       });
       return indexes.sort(function (a, b) { return a - b; });
     }
@@ -487,98 +539,22 @@
     applyTheme(getPreferredTheme());
     themeToggle.addEventListener('change', function () { applyTheme(themeToggle.checked ? 'light' : 'dark'); });
 
-    var isLight = getPreferredTheme() === 'light';
-    tinymce.init({
-      selector: '#' + EDITOR_ID,
-      promotion: false,
-      branding: false,
-      height: 420,
-      menubar: false,
-      plugins: 'lists link paste',
-      toolbar: 'undo redo | blocks | bold italic underline strikethrough | bullist numlist | link | removeformat',
-      block_formats: 'Parágrafo=p; Título 2=h2; Título 3=h3',
-      content_style: 'body { font-family: Segoe UI, system-ui, sans-serif; font-size: 15px; line-height: 1.5; padding: 12px; margin: 0; background: ' + (isLight ? '#f5f5f0' : '#1c1d1c') + '; color: ' + (isLight ? '#1a1a1a' : '#e8e6e3') + '; }',
-      paste_as_text: false,
-      paste_remove_styles_if_webkit: false,
-      valid_elements: 'p,br,strong,em,u,s,a[href],ul,ol,li,h2,h3,h4',
-      init_instance_callback: function (ed) {
-        updateEditorTheme(getPreferredTheme());
-
-        document.querySelectorAll('.btn-insert[data-insert]').forEach(function (btn) {
-          btn.addEventListener('click', function () {
-            var tag = btn.getAttribute('data-insert');
-            ed.insertContent('<p>' + tag + '</p>');
-          });
-        });
-        document.getElementById('btnInsertTemplate').addEventListener('click', function () {
-          setEditorContentFromLines(BQ_TEMPLATE);
-          showMsg('Modelo inserido. Edite e formate o texto; as tags # são preservadas.', 'success');
-        });
-
-        document.getElementById('fileLoadTxt').addEventListener('change', function (e) {
-          var f = e.target.files[0];
-          if (!f) return;
-          var r = new FileReader();
-          r.onload = function () {
-            var lines = r.result.split(/\r?\n/);
-            setEditorContentFromLines(lines);
-            showMsg('Arquivo carregado.', 'success');
-          };
-          r.readAsText(f, 'UTF-8');
-          e.target.value = '';
-        });
-        document.getElementById('btnSaveDraft').addEventListener('click', function () {
-          try {
-            localStorage.setItem(DRAFT_KEY, ed.getContent());
-            showMsg('Rascunho salvo.', 'success');
-          } catch (err) {
-            showMsg('Erro ao salvar rascunho.', 'error');
-          }
-        });
-        document.getElementById('btnClear').addEventListener('click', function () {
-          ed.setContent('<p></p>');
-          hideMsg();
-          showMsg('Editor limpo.', 'success');
-        });
-
-        document.getElementById('btnExportTxt').addEventListener('click', function () {
-          var lines = getEditorLines();
-          var text = lines.join('\n');
-          if (!text.trim()) { showMsg('Não há conteúdo para exportar.', 'error'); return; }
-          var blob = new Blob([text], { type: 'text/plain; charset=utf-8' });
-          var url = URL.createObjectURL(blob);
-          var a = document.createElement('a');
-          a.href = url;
-          a.download = 'banco-bq.txt';
-          a.click();
-          URL.revokeObjectURL(url);
-          showMsg('Arquivo .txt exportado.', 'success');
-        });
-
-        document.getElementById('btnConvert').addEventListener('click', function () {
-          var lines = getEditorLines();
-          hideMsg();
-          try {
-            var banco = BQConverter.parseTextToBanco(lines.join('\n'));
-            if (!banco.question_list.length) {
-              showMsg('Nenhuma questão encontrada. Use #Questão, #Resposta, #Justificativa e #Final.', 'error');
-              return;
-            }
-            openReviewModal(banco, 'banco-editor');
-          } catch (err) {
-            console.error(err);
-            showMsg('Erro ao interpretar o texto: ' + (err.message || String(err)), 'error');
-          }
-        });
-
-        var draft = localStorage.getItem(DRAFT_KEY);
-        if (draft) {
-          if (draft.trim().indexOf('<') === 0) {
-            ed.setContent(draft);
-          } else {
-            setEditorContentFromLines(draft.split(/\r?\n/));
-          }
+    document.getElementById('btnConvert').addEventListener('click', function () {
+      var text = editorTextarea.value;
+      hideMsg();
+      try {
+        var banco = BQConverter.parseTextToBanco(text);
+        if (!banco.question_list || !banco.question_list.length) {
+          showMsg('Nenhuma questão encontrada. Use #Questão, #Resposta, #Justificativa e #Final.', 'error');
+          return;
         }
+        currentBanco = banco;
+        currentBaseFileName = 'banco-editor';
+        renderModalQuestions(banco);
+        openModal();
+      } catch (err) {
+        console.error(err);
+        showMsg('Erro ao interpretar o texto: ' + (err.message || String(err)), 'error');
       }
     });
 
@@ -587,24 +563,31 @@
     document.getElementById('btnModalClose').addEventListener('click', closeModal);
     modalOverlay.addEventListener('click', function (e) { if (e.target === modalOverlay) closeModal(); });
     document.getElementById('btnExportXml').addEventListener('click', function () {
-      if (!currentBanco) return;
+      if (!currentBanco || !currentBanco.question_list) return;
       var indexes = getCheckedQuestions();
       if (indexes.length === 0) {
         showMsg('Selecione ao menos uma questão para exportar.', 'error');
         return;
       }
-      var filtered = indexes.map(function (i) { return currentBanco.question_list[i]; });
+      var filtered = indexes.map(function (i) { return currentBanco.question_list[i]; }).filter(Boolean);
       var xml = currentBanco.toXmlString(filtered);
       var blob = new Blob([xml], { type: 'application/xml; charset=utf-8' });
       var url = URL.createObjectURL(blob);
       var a = document.createElement('a');
       a.href = url;
-      a.download = currentBaseFileName + '.xml';
+      a.download = (currentBaseFileName || 'banco-editor') + '.xml';
       a.click();
-      URL.revokeObjectURL(url);
+      setTimeout(function () { URL.revokeObjectURL(url); }, 200);
       closeModal();
       showMsg('XML exportado com ' + indexes.length + ' questão(ões).', 'success');
     });
+
+    var draft = localStorage.getItem(DRAFT_KEY);
+    if (draft != null && draft !== '') {
+      editorTextarea.value = draft;
+      updateLineNumbers();
+    }
+    updateLineNumbers();
   </script>
 </body>
 </html>
